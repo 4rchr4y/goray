@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
 	"go/parser"
@@ -10,6 +9,8 @@ import (
 	"path/filepath"
 
 	"github.com/4rchr4y/goray/ason"
+	"github.com/TylerBrock/colorjson"
+	"github.com/fatih/color"
 	"github.com/spf13/cobra"
 )
 
@@ -76,11 +77,32 @@ func runDumpCmd(cmd *cobra.Command, args []string) error {
 	}
 
 	fmt.Println(string(jsonData))
+
 	return nil
 }
 
 func prettyprint(b []byte) ([]byte, error) {
-	var out bytes.Buffer
-	err := json.Indent(&out, b, "", "  ")
-	return out.Bytes(), err
+	// var out bytes.Buffer
+	// err := json.Indent(&out, b, "", "  ")
+
+	var obj map[string]interface{}
+	json.Unmarshal(b, &obj)
+	f := colorjson.NewFormatter()
+	f.Indent = 2
+	f.KeyColor = color.New(color.FgHiBlue)
+	// еще настройки:
+	// https://github.com/TylerBrock/colorjson/blob/master/colorjson.go
+
+	// f.KeyColor        *color.Color
+	// f.StringColor     *color.Color
+	// f.BoolColor       *color.Color
+	// f.NumberColor     *color.Color
+	// f.NullColor       *color.Color
+	// f.StringMaxLength int
+	// f.Indent          int
+
+	s, _ := f.Marshal(obj)
+
+	// return out.Bytes(), err
+	return s, nil
 }
