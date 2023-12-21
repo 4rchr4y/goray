@@ -9,8 +9,7 @@ import (
 	"path/filepath"
 
 	"github.com/4rchr4y/goray/ason"
-	"github.com/TylerBrock/colorjson"
-	"github.com/fatih/color"
+	fmtjson "github.com/4rchr4y/goray/internal/service"
 	"github.com/spf13/cobra"
 )
 
@@ -69,40 +68,20 @@ func runDumpCmd(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("error getting 'pretty' flag: %w", err)
 	}
 
+	var jsonString string
 	if pretty {
-		jsonData, err = prettyprint(jsonData)
+		jsonString, err = fmtjson.Pretty(jsonData)
+		if err != nil {
+			return fmt.Errorf("failed to format JSON: %v", err)
+		}
+	} else {
+		jsonString, err = fmtjson.Raw(jsonData)
 		if err != nil {
 			return fmt.Errorf("failed to format JSON: %v", err)
 		}
 	}
 
-	fmt.Println(string(jsonData))
+	fmt.Println(jsonString)
 
 	return nil
-}
-
-func prettyprint(b []byte) ([]byte, error) {
-	// var out bytes.Buffer
-	// err := json.Indent(&out, b, "", "  ")
-
-	var obj map[string]interface{}
-	json.Unmarshal(b, &obj)
-	f := colorjson.NewFormatter()
-	f.Indent = 2
-	f.KeyColor = color.New(color.FgHiBlue)
-	// еще настройки:
-	// https://github.com/TylerBrock/colorjson/blob/master/colorjson.go
-
-	// f.KeyColor        *color.Color
-	// f.StringColor     *color.Color
-	// f.BoolColor       *color.Color
-	// f.NumberColor     *color.Color
-	// f.NullColor       *color.Color
-	// f.StringMaxLength int
-	// f.Indent          int
-
-	s, _ := f.Marshal(obj)
-
-	// return out.Bytes(), err
-	return s, nil
 }
