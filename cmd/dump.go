@@ -68,20 +68,18 @@ func runDumpCmd(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("error getting 'pretty' flag: %w", err)
 	}
 
-	var jsonString string
+	var formattedJson string
+	formatter := fmtjson.JsonFormatter()
 	if pretty {
-		jsonString, err = fmtjson.Pretty(jsonData)
-		if err != nil {
-			return fmt.Errorf("failed to format JSON: %v", err)
-		}
+		formattedJson, err = formatter.Pretty(jsonData)
 	} else {
-		jsonString, err = fmtjson.Raw(jsonData)
-		if err != nil {
-			return fmt.Errorf("failed to format JSON: %v", err)
-		}
+		formattedJson, err = formatter.Raw(jsonData)
+	}
+	if err != nil {
+		return fmt.Errorf("failed to format JSON: %v", err)
 	}
 
-	fmt.Println(jsonString)
+	fmt.Println(formattedJson)
 
 	return nil
 }
