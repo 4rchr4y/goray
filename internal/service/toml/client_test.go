@@ -112,7 +112,7 @@ func TestInterpolate(t *testing.T) {
 		}
 	})
 
-	t.Run("String with one existing and one missing environment variables", func(t *testing.T) {
+	t.Run("String with existing and missing environment variables", func(t *testing.T) {
 		input := "Path is ${EXISTING_VAR}/bin:${MISSING_VAR}/bin"
 		_, err := service.interpolate(input)
 		assert.Error(t, err, "An error should occur when at least one variable is missing")

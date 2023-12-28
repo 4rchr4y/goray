@@ -8,19 +8,19 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var cfgCmd = &cobra.Command{
-	Use:   "cfg",
+var confCmd = &cobra.Command{
+	Use:   "conf",
 	Short: "",
 	Long:  "",
-	Run:   runCfgCmd,
+	Run:   runConfCmd,
 }
 
 func init() {
-	rootCmd.AddCommand(cfgCmd)
+	rootCmd.AddCommand(confCmd)
 }
 
-func runCfgCmd(cmd *cobra.Command, args []string) {
-	const filepath = "./testdata/test_cfg.toml"
+func runConfCmd(cmd *cobra.Command, args []string) {
+	const filepath = "./testdata/test_conf.toml"
 
 	conf, err := rayfile.NewConfigFromFile(filepath)
 	if err != nil {

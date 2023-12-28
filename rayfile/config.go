@@ -1,12 +1,8 @@
 package rayfile
 
 import (
-	"fmt"
-	"os"
-	"regexp"
-	"strings"
-
-	"github.com/BurntSushi/toml"
+	"github.com/4rchr4y/goray/internal/service/toml"
+	"github.com/4rchr4y/goray/internal/syswrap"
 )
 
 // ToDos:
@@ -78,19 +74,23 @@ func WithAnalysis(analysis map[string]*AnalysisConf) ConfOptFn {
 
 type ConfReadFileOptFn func(*ReadConf)
 
+type fsClient interface {
+	ReadFile(name string) ([]byte, error)
+}
+
+type tomlService interface {
+	Decode(data string, v interface{}) error
+}
+
 type ReadConf struct {
-	lookup      func(key string) (string, bool)
-	readFile    func(name string) ([]byte, error)
-	readToml    func(data string, v interface{}) (toml.MetaData, error)
-	interpolate func(lookup LookupFn, strWithEnvs string) (string, error)
+	fsClient
+	tomlService
 }
 
 func NewFromFile(options ...ConfReadFileOptFn) *ReadConf {
 	readConf := &ReadConf{
-		lookup:      os.LookupEnv,
-		readFile:    os.ReadFile,
-		readToml:    toml.Decode,
-		interpolate: interpolate,
+		fsClient:    syswrap.FsClient{},
+		tomlService: &toml.TomlService{},
 	}
 
 	for i := 0; i < len(options); i++ {
@@ -105,17 +105,17 @@ func NewConfigFromFile(filePath string, options ...ConfReadFileOptFn) (*Config, 
 
 	conf := NewConfig()
 
-	data, err := readConf.readFile(filePath)
+	data, err := readConf.ReadFile(filePath)
 	if err != nil {
 		return nil, err
 	}
 
-	dataWithEnv, err := readConf.interpolate(readConf.lookup, string(data))
-	if err != nil {
-		return nil, err
-	}
+	// dataWithEnv, err := readConf.Interpolate(string(data))
+	// if err != nil {
+	// 	return nil, err
+	// }
 
-	if _, err := readConf.readToml(dataWithEnv, &conf); err != nil {
+	if err := readConf.Decode(string(data), &conf); err != nil {
 		return nil, err
 	}
 
@@ -124,33 +124,4 @@ func NewConfigFromFile(filePath string, options ...ConfReadFileOptFn) (*Config, 
 
 func (cfg *Config) Validate() error {
 	return nil
-}
-
-const (
-	envVarString = `\$\{[A-Za-z_][A-Za-z0-9_]*\}`
-)
-
-var (
-	envVarPattern = regexp.MustCompile(envVarString)
-)
-
-func interpolate(lookup LookupFn, strWithEnvs string) (string, error) {
-	missingVariables := make([]string, 0)
-	resultStr := envVarPattern.ReplaceAllStringFunc(strWithEnvs, func(match string) string {
-		envKey := strings.Clone(match[2 : len(match)-1])
-		if value, exists := lookup(envKey); exists {
-			return value
-		}
-
-		missingVariables = append(missingVariables, envKey)
-
-		return match
-	})
-
-	// check if there are any unresolved variables
-	if len(missingVariables) > 0 {
-		return "", fmt.Errorf("environment variables not found: %s", strings.Join(missingVariables, ", "))
-	}
-
-	return resultStr, nil
 }
