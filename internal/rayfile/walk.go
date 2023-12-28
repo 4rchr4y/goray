@@ -1,7 +1,6 @@
 package rayfile
 
 import (
-	"errors"
 	"fmt"
 	"reflect"
 )
@@ -12,24 +11,19 @@ type Field struct {
 	Kind  reflect.Kind
 }
 
-type Visitor interface {
-	Visit(field *Field) (Visitor, error)
+type Handler interface {
+	Handle(field *Field) (Handler, error)
 }
 
-func Walk(v Visitor, field *Field) error {
-	visitor, err := v.Visit(field)
-	if err != nil {
-		return err
-	}
-
-	if visitor == nil {
-		return errors.New("visitor is nil")
-	}
-
+func Walk(h Handler, field *Field) error {
 	val := reflect.ValueOf(field.Value)
+
 	switch val.Kind() {
-	case reflect.String:
-		return nil
+	case reflect.String, reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
+		reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64,
+		reflect.Bool, reflect.Float32, reflect.Float64:
+		field.Value = val.Interface()
+		field.Kind = val.Kind()
 
 	case reflect.Map:
 		for _, key := range val.MapKeys() {
@@ -39,7 +33,7 @@ func Walk(v Visitor, field *Field) error {
 				Path:  append(field.Path, key.String()),
 				Kind:  child.Kind(),
 			}
-			if err := Walk(v, childField); err != nil {
+			if err := Walk(h, childField); err != nil {
 				return err
 			}
 		}
@@ -51,11 +45,12 @@ func Walk(v Visitor, field *Field) error {
 				Path:  append(field.Path, fmt.Sprintf("[%d]", i)),
 				Kind:  val.Index(i).Kind(),
 			}
-			if err := Walk(v, childField); err != nil {
+			if err := Walk(h, childField); err != nil {
 				return err
 			}
 		}
 	}
 
-	return nil
+	_, err := h.Handle(field)
+	return err
 }

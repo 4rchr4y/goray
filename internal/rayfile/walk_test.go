@@ -6,13 +6,13 @@ import (
 )
 
 func TestWalk(t *testing.T) {
-	v := new(RayfileVisitor)
+	v := new(Builder[*Rayfile])
 
 	m := map[string]interface{}{
 		"user": "g10z3r",
 		"term": "xterm-256color",
 		"data": map[string]interface{}{
-			"version": 1.0,
+			"version": 1.1,
 			"workspace": map[string]interface{}{
 				"root": ".",
 			},

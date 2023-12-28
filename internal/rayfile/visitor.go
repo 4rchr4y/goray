@@ -5,9 +5,11 @@ import (
 	"strings"
 )
 
-type RayfileVisitor struct{}
+type Builder[T any] struct {
+	value T
+}
 
-func (rfv *RayfileVisitor) Visit(field *Field) (Visitor, error) {
+func (rfv *Builder[T]) Handle(field *Field) (Handler, error) {
 	fmt.Println(field.Kind.String(), strings.Join(field.Path, "."), "|", field.Value)
 
 	return rfv, nil
