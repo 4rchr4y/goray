@@ -4,7 +4,8 @@ import "fmt"
 
 type RayfileVisitor struct{}
 
-func (rfv *RayfileVisitor) Visit(field interface{}) Visitor {
-	fmt.Println(field)
-	return rfv
+func (rfv *RayfileVisitor) Visit(field *Field) (Visitor, error) {
+	fmt.Println(field.Path, field.Value)
+
+	return rfv, nil
 }

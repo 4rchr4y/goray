@@ -1,31 +1,48 @@
 package rayfile
 
 import (
-	"fmt"
+	"errors"
+	"reflect"
 )
 
 type Field struct {
-	Key   string
+	Path  []string
 	Value interface{}
+	Kind  reflect.Kind
 }
 
 type Visitor interface {
-	Visit(field interface{}) Visitor
+	Visit(field *Field) (Visitor, error)
 }
 
-func Walk(v Visitor, field interface{}) {
-	if v = v.Visit(field); v == nil {
-		return
+func Walk(v Visitor, field *Field) error {
+	visitor, err := v.Visit(field)
+	if err != nil {
+		return err
 	}
 
-	switch f := field.(type) {
-	case string:
-
-	case []string:
-		Walk(v, field)
-
-	case int:
-		fmt.Println(f)
+	if visitor == nil {
+		return errors.New("visitor is nil")
 	}
 
+	val := reflect.ValueOf(field.Value)
+	switch val.Kind() {
+	case reflect.String:
+		return nil
+
+	case reflect.Map:
+		for _, key := range val.MapKeys() {
+			child := val.MapIndex(key)
+			childField := &Field{
+				Value: child.Interface(),
+				Path:  append(field.Path, key.String()), // Обновление пути.
+				Kind:  child.Kind(),
+			}
+			if err := Walk(v, childField); err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
 }
