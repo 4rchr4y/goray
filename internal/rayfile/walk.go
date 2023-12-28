@@ -2,6 +2,7 @@ package rayfile
 
 import (
 	"errors"
+	"fmt"
 	"reflect"
 )
 
@@ -35,8 +36,20 @@ func Walk(v Visitor, field *Field) error {
 			child := val.MapIndex(key)
 			childField := &Field{
 				Value: child.Interface(),
-				Path:  append(field.Path, key.String()), // Обновление пути.
+				Path:  append(field.Path, key.String()),
 				Kind:  child.Kind(),
+			}
+			if err := Walk(v, childField); err != nil {
+				return err
+			}
+		}
+
+	case reflect.Slice, reflect.Array:
+		for i := 0; i < val.Len(); i++ {
+			childField := &Field{
+				Value: val.Index(i).Interface(),
+				Path:  append(field.Path, fmt.Sprintf("[%d]", i)),
+				Kind:  val.Index(i).Kind(),
 			}
 			if err := Walk(v, childField); err != nil {
 				return err
