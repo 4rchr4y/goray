@@ -12,9 +12,10 @@ type testStruct struct {
 	Data    struct {
 		Term      string   `json:"term"`
 		Set       []string `json:"set"`
-		Workspace struct {
-			Root string `json:"root"`
-		} `json:"workspace"`
+		Workspace []struct {
+			Path   string `json:"path" group/item:"#"`
+			Target string `json:"target"`
+		} `json:"workspace" group:"workspace"`
 	} `json:"data"`
 }
 
@@ -32,9 +33,12 @@ func TestWalk(t *testing.T) {
 		"data": map[string]interface{}{
 			"term": "xterm-256color",
 			"set":  "foo",
+			"path": "root",
 			// "set": []string{"foo", "bar", "zip", "zap"},
-			"workspace": map[string]interface{}{
-				"root": "sudo",
+			"workspace": []map[string]interface{}{
+				{
+					"path": "root",
+				},
 			},
 		},
 	}
@@ -45,7 +49,7 @@ func TestWalk(t *testing.T) {
 		Kind:  reflect.ValueOf(m).Kind(),
 	})
 
-	fmt.Println(ts.Data.Set)
+	fmt.Println(ts.Data.Workspace)
 
 	t.Fail()
 }

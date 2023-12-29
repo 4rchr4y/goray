@@ -10,6 +10,11 @@ import (
 type Mode int
 
 const (
+	// Autocomplete is a mode used in the Builder to indicate that if a single value is provided
+	// for a field that expects a slice, the single value should be automatically converted
+	// into a slice with that single value as its element. This is particularly useful when you
+	// want to simplify the setting of fields that are expected to be slices but are common to
+	// have a single value, avoiding the need to manually wrap the value in a slice.
 	Autocomplete Mode = iota + 1
 )
 
@@ -21,10 +26,23 @@ func (o *origin) isSupportedType(field *Field) bool {
 	return o.refval.Type().Elem() == reflect.TypeOf(field.Value)
 }
 
+type cacheKey struct {
+	Value string
+	Group string
+}
+
+type cache struct {
+	storage map[cacheKey]*origin
+}
+
+// func (c *cache) load(key string) (*origin, bool) {
+
+// }
+
 type Builder[T any] struct {
 	val   T
-	tag   string
-	cache map[string]*origin
+	tag   string             // e.g. 'json', 'xml', 'toml'
+	cache map[string]*origin // cache of paths to structure fields
 	mode  Mode
 }
 
@@ -46,6 +64,7 @@ func NewBuilder[T any](value T, tag string, mode Mode) (*Builder[T], error) {
 		mode:  mode,
 	}
 
+	// started creating a cache from the root
 	b.buildCache(v, "")
 
 	return b, nil
