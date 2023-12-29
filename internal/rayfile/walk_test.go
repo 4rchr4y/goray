@@ -1,22 +1,41 @@
 package rayfile
 
 import (
+	"fmt"
 	"reflect"
 	"testing"
 )
 
+type testStruct struct {
+	Version string `json:"version"`
+	User    string `json:"user"`
+	Data    struct {
+		Term      string   `json:"term"`
+		Set       []string `json:"set"`
+		Workspace struct {
+			Root string `json:"root"`
+		} `json:"workspace"`
+	} `json:"data"`
+}
+
 func TestWalk(t *testing.T) {
-	v := new(Builder[*Rayfile])
+	ts := &testStruct{}
+	v, err := NewBuilder[*testStruct](ts, "json", Autocomplete)
+	if err != nil {
+		fmt.Println(err)
+	}
 
 	m := map[string]interface{}{
-		"user": "g10z3r",
-		"term": "xterm-256color",
+		"version": "1.1",
+		"user":    "g10z3r",
+
 		"data": map[string]interface{}{
-			"version": 1.1,
+			"term": "xterm-256color",
+			"set":  "foo",
+			// "set": []string{"foo", "bar", "zip", "zap"},
 			"workspace": map[string]interface{}{
-				"root": ".",
+				"root": "sudo",
 			},
-			"set": []string{"foo", "bar", "zip", "zap"},
 		},
 	}
 
@@ -25,6 +44,8 @@ func TestWalk(t *testing.T) {
 		Value: m,
 		Kind:  reflect.ValueOf(m).Kind(),
 	})
+
+	fmt.Println(ts.Data.Set)
 
 	t.Fail()
 }
