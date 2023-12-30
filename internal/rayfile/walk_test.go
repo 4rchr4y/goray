@@ -53,7 +53,7 @@ func TestWalk(t *testing.T) {
 		Kind:  reflect.ValueOf(m).Kind(),
 	})
 
-	fmt.Println(len(ts.Data.Workspace))
+	fmt.Println(ts.Data.Set)
 
 	t.Fail()
 }

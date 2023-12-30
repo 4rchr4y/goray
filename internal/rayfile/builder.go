@@ -117,7 +117,6 @@ func (b *Builder[T]) buildCache(v reflect.Value, path string) {
 }
 
 func (b *Builder[T]) Handle(field *Field) {
-	fmt.Println(strings.Join(field.Path, "."), "|", field.Value, field.Kind.String())
 
 	path := strings.Join(field.Path, ".")
 	origin, exists := b.cache[path]
@@ -130,6 +129,8 @@ func (b *Builder[T]) Handle(field *Field) {
 	}
 
 	fieldVal := reflect.ValueOf(field.Value)
+
+	fmt.Println(strings.Join(field.Path, "."), "|", field.Value, field.Kind.String())
 
 	switch {
 	case fieldVal.Type().AssignableTo(origin.refval.Type()):

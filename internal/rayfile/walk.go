@@ -25,7 +25,7 @@ func Walk(h Handler, field *Field) {
 			Walk(h, &Field{
 				Value: val.MapIndex(key).Interface(),
 				Path:  append(append([]string(nil), field.Path...), key.String()),
-				Kind:  val.Kind(),
+				Kind:  val.MapIndex(key).Elem().Kind(),
 			})
 		}
 
