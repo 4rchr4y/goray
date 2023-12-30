@@ -1,7 +1,9 @@
 package rayfile
 
 import (
+	"encoding/json"
 	"errors"
+	"fmt"
 
 	"reflect"
 	"strings"
@@ -23,16 +25,15 @@ type origin struct {
 }
 
 func (o *origin) isSupportedType(field *Field) bool {
-	return o.refval.Type().Elem() == reflect.TypeOf(field.Value)
-}
+	if o.refval.Type().Elem() == reflect.TypeOf(field.Value) {
+		return true
+	}
 
-type cacheKey struct {
-	Value string
-	Group string
-}
+	if field.Kind == reflect.Map {
+		return true
+	}
 
-type cache struct {
-	storage map[cacheKey]*origin
+	return false
 }
 
 // func (c *cache) load(key string) (*origin, bool) {
@@ -67,6 +68,10 @@ func NewBuilder[T any](value T, tag string, mode Mode) (*Builder[T], error) {
 	// started creating a cache from the root
 	b.buildCache(v, "")
 
+	d, _ := json.Marshal(b.cache)
+
+	fmt.Println(string(d))
+
 	return b, nil
 }
 
@@ -91,6 +96,13 @@ func (b *Builder[T]) buildCache(v reflect.Value, path string) {
 			refval: field,
 		}
 
+		if field.Kind() == reflect.Slice && field.Type().Elem().Kind() == reflect.Struct {
+			elemType := field.Type().Elem()
+			elem := reflect.New(elemType).Elem()
+			b.buildCache(elem, fmt.Sprintf("%s.[#]", currentPath))
+			continue
+		}
+
 		if !(field.Kind() == reflect.Struct || (field.Kind() == reflect.Ptr && field.Elem().Kind() == reflect.Struct)) {
 			continue // field is not a structure or a pointer to a structure
 		}
@@ -105,6 +117,8 @@ func (b *Builder[T]) buildCache(v reflect.Value, path string) {
 }
 
 func (b *Builder[T]) Handle(field *Field) {
+	fmt.Println(strings.Join(field.Path, "."), "|", field.Value, field.Kind.String())
+
 	path := strings.Join(field.Path, ".")
 	origin, exists := b.cache[path]
 	if !exists {
@@ -121,10 +135,14 @@ func (b *Builder[T]) Handle(field *Field) {
 	case fieldVal.Type().AssignableTo(origin.refval.Type()):
 		origin.refval.Set(fieldVal)
 
-	case b.mode == Autocomplete && origin.refval.Kind() == reflect.Slice && origin.isSupportedType(field):
+	case b.mode == Autocomplete && origin.refval.Kind() == reflect.Slice && origin.isSupportedType(field) && field.Kind != reflect.Map:
 		sliceType := origin.refval.Type()
 		slice := reflect.MakeSlice(sliceType, 1, 1)
 		slice.Index(0).Set(fieldVal)
 		origin.refval.Set(slice)
+		return
+
+		// case origin.refval.Kind() == reflect.Slice && field.Kind == reflect.Map:
+		// 	fmt.Println(strings.Join(field.Path, "."), field.Kind)
 	}
 }

@@ -1,14 +1,14 @@
 package rayfile
 
 import (
-	"fmt"
 	"reflect"
 )
 
 type Field struct {
-	Path  []string
-	Value interface{}
-	Kind  reflect.Kind
+	Path       []string
+	Value      interface{}
+	Kind       reflect.Kind
+	ParentKind reflect.Kind
 }
 
 type Handler interface {
@@ -19,11 +19,11 @@ func Walk(h Handler, field *Field) {
 	val := reflect.ValueOf(field.Value)
 
 	switch val.Kind() {
+
 	case reflect.Map:
 		for _, key := range val.MapKeys() {
-			child := val.MapIndex(key)
 			Walk(h, &Field{
-				Value: child.Interface(),
+				Value: val.MapIndex(key).Interface(),
 				Path:  append(append([]string(nil), field.Path...), key.String()),
 				Kind:  val.Kind(),
 			})
@@ -33,9 +33,11 @@ func Walk(h Handler, field *Field) {
 		for i := 0; i < val.Len(); i++ {
 			Walk(h, &Field{
 				Value: val.Index(i).Interface(),
-				Path:  append(append([]string(nil), field.Path...), fmt.Sprintf("[%d]", i)),
-				Kind:  val.Index(i).Kind(),
+				// Path:  append(append([]string(nil), field.Path...), fmt.Sprintf("[%d]", i)),
+				Path: append(append([]string(nil), field.Path...), "[#]"),
+				Kind: val.Index(i).Kind(),
 			})
+
 		}
 	}
 
