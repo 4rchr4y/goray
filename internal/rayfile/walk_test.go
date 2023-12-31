@@ -13,19 +13,16 @@ type testStruct struct {
 		Term      string   `json:"term"`
 		Set       []string `json:"set"`
 		Workspace []struct {
-			Path    string   `json:"path" group/item:"#"`
+			Path    string   `json:"path"`
 			Targets []string `json:"targets"`
-		} `json:"workspace" group:"workspace"`
+			Emm     []struct {
+				K1 string `json:"k1"`
+			} `json:"emm"`
+		} `json:"workspace"`
 	} `json:"data"`
 }
 
 func TestWalk(t *testing.T) {
-	ts := &testStruct{}
-	v, err := NewBuilder[*testStruct](ts, "json", Autocomplete)
-	if err != nil {
-		fmt.Println(err)
-	}
-
 	m := map[string]interface{}{
 		"version": "1.1",
 		"user":    "g10z3r",
@@ -34,26 +31,40 @@ func TestWalk(t *testing.T) {
 			"term": "xterm-256color",
 			// "set":  "foo",
 			"path": "src/dir",
-			"set":  []string{"foo", "bar", "zip", "zap"},
+			// "set":  []string{"foo", "bar", "zip", "zap"},
 			"workspace": []map[string]interface{}{
 				{
 					"path":    "root",
 					"targets": []string{"t1", "t2", "t3"},
+					"emm": []map[string]interface{}{
+						{
+							"k1": "v1",
+						},
+					},
 				},
 				{
 					"path": "not-root",
+				},
+				{
+					"path": "foo",
 				},
 			},
 		},
 	}
 
+	ts := &testStruct{}
+	v, err := NewBuilder(ts, m, WithMode(Autocomplete))
+	if err != nil {
+		fmt.Println(err)
+	}
+
 	Walk(v, &Field{
-		Path:  make([]string, 0),
+		Path:  nil,
 		Value: m,
 		Kind:  reflect.ValueOf(m).Kind(),
 	})
 
-	fmt.Println(ts.Data.Set)
+	fmt.Println(ts.Data.Workspace[0].Emm)
 
 	t.Fail()
 }

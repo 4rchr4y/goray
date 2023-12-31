@@ -1,14 +1,15 @@
 package rayfile
 
 import (
+	"fmt"
 	"reflect"
 )
 
 type Field struct {
-	Path       []string
-	Value      interface{}
-	Kind       reflect.Kind
-	ParentKind reflect.Kind
+	Parent *Field
+	Path   []string
+	Value  interface{}
+	Kind   reflect.Kind
 }
 
 type Handler interface {
@@ -16,6 +17,7 @@ type Handler interface {
 }
 
 func Walk(h Handler, field *Field) {
+
 	val := reflect.ValueOf(field.Value)
 
 	switch val.Kind() {
@@ -23,18 +25,20 @@ func Walk(h Handler, field *Field) {
 	case reflect.Map:
 		for _, key := range val.MapKeys() {
 			Walk(h, &Field{
-				Value: val.MapIndex(key).Interface(),
-				Path:  append(append([]string(nil), field.Path...), key.String()),
-				Kind:  val.MapIndex(key).Elem().Kind(),
+				Parent: field,
+				Value:  val.MapIndex(key).Interface(),
+				Path:   append(append([]string(nil), field.Path...), key.String()),
+				Kind:   val.MapIndex(key).Elem().Kind(),
 			})
 		}
 
 	case reflect.Slice, reflect.Array:
 		for i := 0; i < val.Len(); i++ {
 			Walk(h, &Field{
-				Value: val.Index(i).Interface(),
-				// Path:  append(append([]string(nil), field.Path...), fmt.Sprintf("[%d]", i)),
-				Path: append(append([]string(nil), field.Path...), "[#]"),
+				Parent: field,
+				Value:  val.Index(i).Interface(),
+				Path:   append(append([]string(nil), field.Path...), fmt.Sprintf("[%d]", i)),
+				// Path: append(append([]string(nil), field.Path...), "[#]"),
 				Kind: val.Index(i).Kind(),
 			})
 

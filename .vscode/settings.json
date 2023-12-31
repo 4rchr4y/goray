@@ -26,6 +26,7 @@
         "stretchr",
         "subdir",
         "subdirs",
+        "substr",
         "syswrap",
         "tagset",
         "testcode",
