@@ -6,20 +6,24 @@ import (
 	"testing"
 )
 
+type testWorkspace struct {
+	Path    string   `json:"path"`
+	Targets []string `json:"targets"`
+	Emm     []struct {
+		K1 []string `json:"k1"`
+	} `json:"emm"`
+}
+
+type testData struct {
+	Term      string           `json:"term"`
+	Set       []string         `json:"set"`
+	Workspace []*testWorkspace `json:"workspace"`
+}
+
 type testStruct struct {
-	Version string `json:"version"`
-	User    string `json:"user"`
-	Data    struct {
-		Term      string   `json:"term"`
-		Set       []string `json:"set"`
-		Workspace []struct {
-			Path    string   `json:"path"`
-			Targets []string `json:"targets"`
-			Emm     []struct {
-				K1 string `json:"k1"`
-			} `json:"emm"`
-		} `json:"workspace"`
-	} `json:"data"`
+	Version string    `json:"version"`
+	User    string    `json:"user"`
+	Data    *testData `json:"data"`
 }
 
 func TestWalk(t *testing.T) {
@@ -29,7 +33,7 @@ func TestWalk(t *testing.T) {
 
 		"data": map[string]interface{}{
 			"term": "xterm-256color",
-			// "set":  "foo",
+			"set":  "foo",
 			"path": "src/dir",
 			// "set":  []string{"foo", "bar", "zip", "zap"},
 			"workspace": []map[string]interface{}{
@@ -64,7 +68,9 @@ func TestWalk(t *testing.T) {
 		Kind:  reflect.ValueOf(m).Kind(),
 	})
 
-	fmt.Println(ts.Data.Workspace[0].Emm)
+	fmt.Println(ts.User)
+	fmt.Println(ts.Data.Workspace[0].Emm[0].K1)
+	fmt.Println(ts.Data.Workspace[0].Targets)
 
 	t.Fail()
 }

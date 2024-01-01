@@ -99,6 +99,7 @@ func WithMode(mode Mode) BuilderOptFn {
 	}
 }
 
+// TODO refactor this shit
 func (b *Builder) buildSourceCache(v reflect.Value, path string) {
 	for _, key := range v.MapKeys() {
 		val := v.MapIndex(key)
@@ -133,63 +134,88 @@ func (b *Builder) buildSourceCache(v reflect.Value, path string) {
 	}
 }
 
+// TODO refactor this shit
 func (b *Builder) buildTargetCache(v reflect.Value, path string) {
+	if v.Kind() == reflect.Ptr {
+		v = v.Elem() // get the structure pointed to by the pointer
+	}
+
 	for i := 0; i < v.NumField(); i++ {
 		field := v.Field(i)
 		typeField := v.Type().Field(i)
 
+		// defining a field tag
 		fieldTag := strings.Split(typeField.Tag.Get(b.tag), ",")[0]
 		if fieldTag == "" {
 			fieldTag = typeField.Name
 		}
 
-		// building the path to the current field
+		// building a path to the current field
 		currentPath := path
 		if currentPath != "" {
 			currentPath += "."
 		}
-
 		currentPath += fieldTag
+
+		// handling pointers to structures
+		var effectiveField reflect.Value
+		if field.Kind() == reflect.Ptr && field.Type().Elem().Kind() == reflect.Struct {
+			if field.IsNil() {
+				// if the pointer is nil, create a new structure and set the pointer
+				newStruct := reflect.New(field.Type().Elem())
+				field.Set(newStruct)
+			}
+			effectiveField = field.Elem()
+		} else {
+			effectiveField = field
+		}
+
 		b.targetCache[currentPath] = &origin{
 			name:   typeField.Name,
 			path:   currentPath,
-			refval: &field,
+			refval: &effectiveField,
 		}
 
-		if field.Kind() == reflect.Slice && field.Type().Elem().Kind() == reflect.Struct {
+		// processing slices of structures
+		if field.Kind() == reflect.Slice {
 			elemType := field.Type().Elem()
-			sce := b.sourceCache[currentPath] // source cache element
+			isStructPtr := elemType.Kind() == reflect.Ptr && elemType.Elem().Kind() == reflect.Struct
 
-			if sce == nil {
-				continue
-			}
+			if elemType.Kind() == reflect.Struct || isStructPtr {
+				sce := b.sourceCache[currentPath]
 
-		SVL:
-			for j := 0; j < sce.refval.Elem().Len(); j++ {
-				if j == 0 {
-					amount := sce.refval.Elem().Len()
-					field.Set(reflect.MakeSlice(reflect.SliceOf(elemType), amount, amount))
+				if sce == nil {
+					continue
 				}
 
-				elem := reflect.New(elemType).Elem()
-				field.Index(j).Set(elem)
-				b.buildTargetCache(field.Index(j), fmt.Sprintf("%s.[%d]", currentPath, j))
-				continue SVL
+				for j := 0; j < sce.refval.Elem().Len(); j++ {
+					if j == 0 {
+						amount := sce.refval.Elem().Len()
+						field.Set(reflect.MakeSlice(reflect.SliceOf(elemType), amount, amount))
+					}
+
+					// working with pointers to structures in a slice
+					var elem reflect.Value
+					if isStructPtr {
+						elem = reflect.New(elemType.Elem())
+						field.Index(j).Set(elem)
+					} else {
+						elem = reflect.New(elemType).Elem()
+						field.Index(j).Set(elem)
+					}
+
+					b.buildTargetCache(field.Index(j), fmt.Sprintf("%s.[%d]", currentPath, j))
+				}
 			}
-
 			continue
 		}
 
-		if !(field.Kind() == reflect.Struct || (field.Kind() == reflect.Ptr && field.Elem().Kind() == reflect.Struct)) {
-			continue // field is not a structure or a pointer to a structure
-		}
-
-		if field.Kind() == reflect.Ptr && field.IsNil() {
+		if effectiveField.Kind() != reflect.Struct {
 			continue
 		}
 
-		// building a cache for embed structs
-		b.buildTargetCache(field, currentPath)
+		// recursively build cache for nested structures
+		b.buildTargetCache(effectiveField, currentPath)
 	}
 }
 
