@@ -38,8 +38,7 @@ func Walk(h Handler, field *Field) {
 				Parent: field,
 				Value:  val.Index(i).Interface(),
 				Path:   append(append([]string(nil), field.Path...), fmt.Sprintf("[%d]", i)),
-				// Path: append(append([]string(nil), field.Path...), "[#]"),
-				Kind: val.Index(i).Kind(),
+				Kind:   val.Index(i).Kind(),
 			})
 
 		}

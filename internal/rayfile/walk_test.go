@@ -7,8 +7,8 @@ import (
 )
 
 type testWorkspace struct {
-	Path    string   `json:"path"`
-	Targets []string `json:"targets"`
+	Path    string    `json:"path"`
+	Targets []*string `json:"targets"`
 	Emm     []struct {
 		K1 []string `json:"k1"`
 	} `json:"emm"`
@@ -22,18 +22,20 @@ type testData struct {
 
 type testStruct struct {
 	Version string    `json:"version"`
-	User    string    `json:"user"`
+	User    *string   `json:"user"`
 	Data    *testData `json:"data"`
 }
 
 func TestWalk(t *testing.T) {
+	user := "g10z3r"
+	version := "1.1"
 	m := map[string]interface{}{
-		"version": "1.1",
-		"user":    "g10z3r",
+		"version": &version,
+		"user":    user,
 
 		"data": map[string]interface{}{
 			"term": "xterm-256color",
-			"set":  "foo",
+			"set":  &user,
 			"path": "src/dir",
 			// "set":  []string{"foo", "bar", "zip", "zap"},
 			"workspace": []map[string]interface{}{
@@ -68,9 +70,11 @@ func TestWalk(t *testing.T) {
 		Kind:  reflect.ValueOf(m).Kind(),
 	})
 
-	fmt.Println(ts.User)
+	fmt.Println("version", ts.Version)
+	fmt.Println("user", *ts.User)
+	fmt.Println("set, pointer to string", ts.Data.Set)
 	fmt.Println(ts.Data.Workspace[0].Emm[0].K1)
-	fmt.Println(ts.Data.Workspace[0].Targets)
+	fmt.Println("targets, string to pointer", ts.Data.Workspace[0].Targets)
 
 	t.Fail()
 }

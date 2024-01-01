@@ -27,15 +27,15 @@ type origin struct {
 }
 
 func (o *origin) isSupportedType(field *Field) bool {
-	if o.refval.Type().Elem() == reflect.TypeOf(field.Value) {
-		return true
-	}
+	// if o.refval.Type().Elem() == reflect.TypeOf(field.Value) {
+	// 	return true
+	// }
 
 	if field.Kind == reflect.Map {
 		return true
 	}
-
-	return false
+	// fmt.Println(strings.Join(field.Path, "."), o.refval.Type().Elem().Kind().String(), reflect.TypeOf(field.Value).Kind().String())
+	return assignable(o.refval.Type().Elem(), reflect.TypeOf(field.Value))
 }
 
 type Builder struct {
@@ -233,23 +233,101 @@ func (b *Builder) Handle(field *Field) {
 	fieldVal := reflect.ValueOf(field.Value)
 
 	switch {
-	case fieldVal.Type().AssignableTo(origin.refval.Type()):
-		origin.refval.Set(fieldVal)
+	case assignable(origin.refval.Type(), fieldVal.Type()):
+
+		fmt.Println(path)
+		assign(*origin.refval, fieldVal)
 
 	case b.mode == Autocomplete && origin.refval.Kind() == reflect.Slice && origin.isSupportedType(field):
 		sliceType := origin.refval.Type()
 		slice := reflect.MakeSlice(sliceType, 1, 1)
-		slice.Index(0).Set(fieldVal)
+
+		assign(slice.Index(0), fieldVal)
+
 		origin.refval.Set(slice)
 		return
 	}
 }
 
-func trimLastOccurrence(s, substr string) string {
-	idx := strings.LastIndex(s, substr)
-	if idx == -1 {
-		return s
+func assignable(destType, valType reflect.Type) bool {
+	// checking for pointer compatibility
+	if destType.Kind() == reflect.Ptr && destType.Elem().Kind() == valType.Kind() {
+		return true
 	}
 
-	return s[:idx]
+	if valType.Kind() == reflect.Ptr && valType.Elem().Kind() == destType.Kind() {
+		return true
+	}
+
+	// checking for forward type compatibility
+	if destType.Kind() != reflect.Ptr && valType.AssignableTo(destType) {
+		return true
+	}
+
+	// checking for pointer and value compatibility
+	if destType.Kind() == reflect.Ptr && valType.AssignableTo(destType.Elem()) {
+		return true
+	}
+
+	if destType.Kind() == reflect.Slice && valType.Kind() == reflect.Slice {
+		return assignable(destType.Elem(), valType.Elem())
+	}
+
+	return false
+}
+
+func assign(dest, val reflect.Value) {
+	if !dest.CanSet() || !val.IsValid() {
+		return
+	}
+
+	if dest.Kind() == reflect.Ptr && val.Kind() != reflect.Ptr {
+		newPtr := reflect.New(dest.Type().Elem())
+		newPtr.Elem().Set(val)
+		dest.Set(newPtr)
+		return
+	}
+
+	if dest.Kind() != reflect.Ptr && val.Kind() == reflect.Ptr {
+		val = val.Elem()
+	}
+
+	if val.Type().AssignableTo(dest.Type()) {
+		dest.Set(val)
+		return
+	}
+
+	if dest.Type().Kind() == reflect.Slice && val.Type().Kind() == reflect.Slice {
+		destIsPtrSlice := dest.Type().Elem().Kind() == reflect.Ptr
+		valIsPtrSlice := val.Type().Elem().Kind() == reflect.Ptr
+
+		// Подготавливаем новый слайс для результатов.
+		newSlice := reflect.MakeSlice(dest.Type(), val.Len(), val.Cap())
+
+		for i := 0; i < val.Len(); i++ {
+			elem := val.Index(i)
+
+			// Преобразовываем элементы в соответствии с типами слайсов.
+			if destIsPtrSlice && !valIsPtrSlice {
+				// Преобразуем строку в указатель на строку.
+				newPtr := reflect.New(elem.Type())
+				newPtr.Elem().Set(elem)
+				newSlice.Index(i).Set(newPtr)
+			} else if !destIsPtrSlice && valIsPtrSlice {
+				// Преобразуем указатель на строку в строку.
+				if !elem.IsNil() {
+					newSlice.Index(i).Set(elem.Elem())
+				}
+			} else {
+				// Типы совпадают, просто копируем.
+				newSlice.Index(i).Set(elem)
+			}
+		}
+
+		// Присваиваем новый слайс целевому значению.
+		dest.Set(newSlice)
+	}
+
+	// fmt.Println(dest.Type().Kind().String(), val.Type().Kind().String(), val.Type().AssignableTo(dest.Type()))
+
 }
