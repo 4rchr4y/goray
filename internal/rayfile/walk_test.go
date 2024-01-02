@@ -35,9 +35,9 @@ func TestWalk(t *testing.T) {
 
 		"data": map[string]interface{}{
 			"term": "xterm-256color",
-			"set":  &user,
+			// "set":  &user,
 			"path": "src/dir",
-			// "set":  []string{"foo", "bar", "zip", "zap"},
+			"set":  []string{"foo", "bar", "zip", "zap"},
 			"workspace": []map[string]interface{}{
 				{
 					"path":    "root",

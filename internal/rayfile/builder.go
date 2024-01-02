@@ -1,8 +1,6 @@
 package rayfile
 
 import (
-	"encoding/json"
-	"errors"
 	"fmt"
 
 	"reflect"
@@ -22,26 +20,22 @@ const (
 
 type origin struct {
 	name   string
-	path   string         // field path in the struct, e.g. data.embed.some
-	refval *reflect.Value // original reflect value
+	path   string        // field path in the struct, e.g. data.embed.some
+	refval reflect.Value // original reflect value
 }
 
 func (o *origin) isSupportedType(field *Field) bool {
-	// if o.refval.Type().Elem() == reflect.TypeOf(field.Value) {
-	// 	return true
-	// }
-
 	if field.Kind == reflect.Map {
 		return true
 	}
-	// fmt.Println(strings.Join(field.Path, "."), o.refval.Type().Elem().Kind().String(), reflect.TypeOf(field.Value).Kind().String())
+
 	return assignable(o.refval.Type().Elem(), reflect.TypeOf(field.Value))
 }
 
 type Builder struct {
 	value       any
 	tag         string             // e.g. 'json', 'xml', 'toml'
-	targetCache map[string]*origin // cache of paths to structure fields
+	destCache   map[string]*origin // cache of paths to structure fields
 	sourceCache map[string]*origin // cache of paths in source map
 	mode        Mode
 }
@@ -50,19 +44,10 @@ type BuilderOptFn func(*Builder)
 
 func NewBuilder(value any, source map[string]any, options ...BuilderOptFn) (*Builder, error) {
 	v := reflect.ValueOf(value).Elem()
-
-	if v.Kind() == reflect.Ptr {
-		v = v.Elem()
-	}
-
-	if v.Kind() != reflect.Struct {
-		return nil, errors.New("invalid type")
-	}
-
 	b := &Builder{
 		value:       value,
 		tag:         "json",
-		targetCache: make(map[string]*origin),
+		destCache:   make(map[string]*origin),
 		sourceCache: make(map[string]*origin),
 		mode:        0,
 	}
@@ -71,18 +56,13 @@ func NewBuilder(value any, source map[string]any, options ...BuilderOptFn) (*Bui
 		options[i](b)
 	}
 
-	b.buildSourceCache(reflect.ValueOf(source), "")
+	if err := b.buildSourceCache(reflect.ValueOf(source), ""); err != nil {
+		return nil, fmt.Errorf("failed to build source cache: %v", err)
+	}
 
-	// started creating a cache from the root
-	b.buildTargetCache(v, "")
-
-	d, _ := json.Marshal(b.sourceCache)
-
-	fmt.Println(string(d))
-
-	d, _ = json.Marshal(b.targetCache)
-
-	fmt.Println(string(d))
+	if err := b.buildDestCache(v, ""); err != nil {
+		return nil, fmt.Errorf("failed to build destination cache: %v", err)
+	}
 
 	return b, nil
 }
@@ -99,84 +79,65 @@ func WithMode(mode Mode) BuilderOptFn {
 	}
 }
 
-// TODO refactor this shit
-func (b *Builder) buildSourceCache(v reflect.Value, path string) {
+func (b *Builder) buildSourceCache(v reflect.Value, path string) error {
+	if v.Kind() != reflect.Map {
+		return fmt.Errorf("source value type should be a map, got %s", v.Kind().String())
+	}
+
 	for _, key := range v.MapKeys() {
 		val := v.MapIndex(key)
 
-		currentPath := path
-		if currentPath != "" {
-			currentPath += "."
-		}
-
-		currentPath += key.String()
-
-		switch {
-		case val.Elem().Kind() == reflect.Map:
-			b.buildSourceCache(val.Elem(), currentPath)
-
-		case val.Elem().Kind() == reflect.Slice:
-		SVL:
-			for i := 0; i < val.Elem().Len(); i++ {
-				elem := val.Elem().Index(i)
-				if elem.Kind() == reflect.Map {
-					b.buildSourceCache(elem, fmt.Sprintf("%s.[%d]", currentPath, i))
-					continue SVL
-				}
-			}
-		}
+		currentPath := buildPath(path, key.String())
+		b.processSourceValue(val, currentPath)
 
 		b.sourceCache[currentPath] = &origin{
 			name:   key.String(),
 			path:   currentPath,
-			refval: &val,
+			refval: val,
+		}
+	}
+
+	return nil
+}
+
+func (b *Builder) processSourceValue(val reflect.Value, currentPath string) {
+	if val.Elem().Kind() == reflect.Map {
+		b.buildSourceCache(val.Elem(), currentPath)
+		return
+	}
+
+	if val.Elem().Kind() == reflect.Slice {
+		for i := 0; i < val.Elem().Len(); i++ {
+			elem := val.Elem().Index(i)
+
+			if elem.Kind() == reflect.Map {
+				b.buildSourceCache(elem, fmt.Sprintf("%s.[%d]", currentPath, i))
+			}
 		}
 	}
 }
 
 // TODO refactor this shit
-func (b *Builder) buildTargetCache(v reflect.Value, path string) {
-	if v.Kind() == reflect.Ptr {
-		v = v.Elem() // get the structure pointed to by the pointer
+func (b *Builder) buildDestCache(v reflect.Value, path string) error {
+	if v.Kind() != reflect.Struct && v.Kind() != reflect.Ptr && v.Elem().Kind() != reflect.Struct {
+		return fmt.Errorf("destination value type should be a struct or pointer to struct, got %s", v.Kind().String())
 	}
+
+	v = deRefPtr(v)
 
 	for i := 0; i < v.NumField(); i++ {
 		field := v.Field(i)
 		typeField := v.Type().Field(i)
+		currentPath := buildPath(path, getFieldTag(typeField, b.tag))
+		effectiveField := getEffectiveField(field)
 
-		// defining a field tag
-		fieldTag := strings.Split(typeField.Tag.Get(b.tag), ",")[0]
-		if fieldTag == "" {
-			fieldTag = typeField.Name
-		}
-
-		// building a path to the current field
-		currentPath := path
-		if currentPath != "" {
-			currentPath += "."
-		}
-		currentPath += fieldTag
-
-		// handling pointers to structures
-		var effectiveField reflect.Value
-		if field.Kind() == reflect.Ptr && field.Type().Elem().Kind() == reflect.Struct {
-			if field.IsNil() {
-				// if the pointer is nil, create a new structure and set the pointer
-				newStruct := reflect.New(field.Type().Elem())
-				field.Set(newStruct)
-			}
-			effectiveField = field.Elem()
-		} else {
-			effectiveField = field
-		}
-
-		b.targetCache[currentPath] = &origin{
+		b.destCache[currentPath] = &origin{
 			name:   typeField.Name,
 			path:   currentPath,
-			refval: &effectiveField,
+			refval: effectiveField,
 		}
 
-		// processing slices of structures
+		// processing slices of structures <-- TODO
 		if field.Kind() == reflect.Slice {
 			elemType := field.Type().Elem()
 			isStructPtr := elemType.Kind() == reflect.Ptr && elemType.Elem().Kind() == reflect.Struct
@@ -204,7 +165,7 @@ func (b *Builder) buildTargetCache(v reflect.Value, path string) {
 						field.Index(j).Set(elem)
 					}
 
-					b.buildTargetCache(field.Index(j), fmt.Sprintf("%s.[%d]", currentPath, j))
+					b.buildDestCache(field.Index(j), fmt.Sprintf("%s.[%d]", currentPath, j))
 				}
 			}
 			continue
@@ -215,13 +176,15 @@ func (b *Builder) buildTargetCache(v reflect.Value, path string) {
 		}
 
 		// recursively build cache for nested structures
-		b.buildTargetCache(effectiveField, currentPath)
+		b.buildDestCache(effectiveField, currentPath)
 	}
+
+	return nil
 }
 
 func (b *Builder) Handle(field *Field) {
 	path := strings.Join(field.Path, ".")
-	origin, exists := b.targetCache[path]
+	origin, exists := b.destCache[path]
 	if !exists {
 		return
 	}
@@ -234,9 +197,7 @@ func (b *Builder) Handle(field *Field) {
 
 	switch {
 	case assignable(origin.refval.Type(), fieldVal.Type()):
-
-		fmt.Println(path)
-		assign(*origin.refval, fieldVal)
+		assign(origin.refval, fieldVal)
 
 	case b.mode == Autocomplete && origin.refval.Kind() == reflect.Slice && origin.isSupportedType(field):
 		sliceType := origin.refval.Type()
@@ -247,6 +208,14 @@ func (b *Builder) Handle(field *Field) {
 		origin.refval.Set(slice)
 		return
 	}
+}
+
+func buildPath(basePath, key string) string {
+	if basePath != "" {
+		return basePath + "." + key
+	}
+
+	return key
 }
 
 func assignable(destType, valType reflect.Type) bool {
@@ -281,53 +250,102 @@ func assign(dest, val reflect.Value) {
 		return
 	}
 
-	if dest.Kind() == reflect.Ptr && val.Kind() != reflect.Ptr {
-		newPtr := reflect.New(dest.Type().Elem())
-		newPtr.Elem().Set(val)
-		dest.Set(newPtr)
-		return
-	}
-
-	if dest.Kind() != reflect.Ptr && val.Kind() == reflect.Ptr {
-		val = val.Elem()
-	}
-
-	if val.Type().AssignableTo(dest.Type()) {
+	switch {
+	case isDirectlyAssignable(dest, val):
 		dest.Set(val)
-		return
+	case isPointerToNonPointer(dest, val):
+		assignPointerToNonPointer(dest, val)
+	case isNonPointerToPointer(dest, val):
+		assignNonPointerToPointer(dest, val)
+	case isSliceToSlice(dest, val):
+		assignSliceToSlice(dest, val)
 	}
+}
 
-	if dest.Type().Kind() == reflect.Slice && val.Type().Kind() == reflect.Slice {
-		destIsPtrSlice := dest.Type().Elem().Kind() == reflect.Ptr
-		valIsPtrSlice := val.Type().Elem().Kind() == reflect.Ptr
+func isDirectlyAssignable(dest, val reflect.Value) bool {
+	return val.Type().AssignableTo(dest.Type())
+}
 
-		// Подготавливаем новый слайс для результатов.
-		newSlice := reflect.MakeSlice(dest.Type(), val.Len(), val.Cap())
+func isPointerToNonPointer(dest, val reflect.Value) bool {
+	return dest.Kind() == reflect.Ptr && val.Kind() != reflect.Ptr
+}
 
-		for i := 0; i < val.Len(); i++ {
-			elem := val.Index(i)
+func isNonPointerToPointer(dest, val reflect.Value) bool {
+	return dest.Kind() != reflect.Ptr && val.Kind() == reflect.Ptr
+}
 
-			// Преобразовываем элементы в соответствии с типами слайсов.
-			if destIsPtrSlice && !valIsPtrSlice {
-				// Преобразуем строку в указатель на строку.
-				newPtr := reflect.New(elem.Type())
-				newPtr.Elem().Set(elem)
-				newSlice.Index(i).Set(newPtr)
-			} else if !destIsPtrSlice && valIsPtrSlice {
-				// Преобразуем указатель на строку в строку.
-				if !elem.IsNil() {
-					newSlice.Index(i).Set(elem.Elem())
-				}
-			} else {
-				// Типы совпадают, просто копируем.
-				newSlice.Index(i).Set(elem)
-			}
+func isSliceToSlice(dest, val reflect.Value) bool {
+	return dest.Type().Kind() == reflect.Slice && val.Type().Kind() == reflect.Slice
+}
+
+func assignPointerToNonPointer(dest, val reflect.Value) {
+	newPtr := reflect.New(dest.Type().Elem())
+	newPtr.Elem().Set(val)
+	dest.Set(newPtr)
+}
+
+func assignNonPointerToPointer(dest, val reflect.Value) {
+	dest.Set(val.Elem())
+}
+
+func assignSliceToSlice(dest, val reflect.Value) {
+	destIsPtrSlice := dest.Type().Elem().Kind() == reflect.Ptr
+	valIsPtrSlice := val.Type().Elem().Kind() == reflect.Ptr
+	newSlice := reflect.MakeSlice(dest.Type(), val.Len(), val.Cap())
+
+	for i := 0; i < val.Len(); i++ {
+		elem := val.Index(i)
+		if destIsPtrSlice != valIsPtrSlice {
+			adjustSliceElementTypes(destIsPtrSlice, newSlice.Index(i), elem)
+			continue
 		}
 
-		// Присваиваем новый слайс целевому значению.
-		dest.Set(newSlice)
+		newSlice.Index(i).Set(elem)
 	}
 
-	// fmt.Println(dest.Type().Kind().String(), val.Type().Kind().String(), val.Type().AssignableTo(dest.Type()))
+	dest.Set(newSlice)
+}
 
+func adjustSliceElementTypes(destIsPtrSlice bool, destElem, srcElem reflect.Value) {
+	if destIsPtrSlice {
+		newPtr := reflect.New(srcElem.Type())
+		newPtr.Elem().Set(srcElem)
+		destElem.Set(newPtr)
+		return
+	}
+
+	if !srcElem.IsNil() {
+		destElem.Set(srcElem.Elem())
+		return
+	}
+}
+
+func deRefPtr(v reflect.Value) reflect.Value {
+	if v.Kind() == reflect.Ptr {
+		return v.Elem()
+	}
+	return v
+}
+
+func getFieldTag(field reflect.StructField, tag string) string {
+	fieldTag := strings.Split(field.Tag.Get(tag), ",")[0]
+	if fieldTag == "" {
+		return field.Name
+	}
+
+	return fieldTag
+}
+
+// getEffectiveField handling pointers to structures
+func getEffectiveField(field reflect.Value) reflect.Value {
+	if field.Kind() == reflect.Ptr && field.Type().Elem().Kind() == reflect.Struct {
+		if field.IsNil() {
+			// set the pointer of a new structure
+			field.Set(reflect.New(field.Type().Elem()))
+		}
+
+		return field.Elem()
+	}
+
+	return field
 }
