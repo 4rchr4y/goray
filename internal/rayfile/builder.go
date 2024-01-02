@@ -40,6 +40,14 @@ type Builder struct {
 	mode        Mode
 }
 
+func (b *Builder) updateDestCache(path, fieldName string, field reflect.Value) {
+	b.destCache[path] = &origin{
+		name:   fieldName,
+		path:   path,
+		refval: field,
+	}
+}
+
 type BuilderOptFn func(*Builder)
 
 func NewBuilder(value any, source map[string]any, options ...BuilderOptFn) (*Builder, error) {
@@ -117,69 +125,65 @@ func (b *Builder) processSourceValue(val reflect.Value, currentPath string) {
 	}
 }
 
-// TODO refactor this shit
 func (b *Builder) buildDestCache(v reflect.Value, path string) error {
-	if v.Kind() != reflect.Struct && v.Kind() != reflect.Ptr && v.Elem().Kind() != reflect.Struct {
+	v = deRefPtr(v)
+
+	if v.Kind() != reflect.Struct {
 		return fmt.Errorf("destination value type should be a struct or pointer to struct, got %s", v.Kind().String())
 	}
-
-	v = deRefPtr(v)
 
 	for i := 0; i < v.NumField(); i++ {
 		field := v.Field(i)
 		typeField := v.Type().Field(i)
 		currentPath := buildPath(path, getFieldTag(typeField, b.tag))
+
 		effectiveField := getEffectiveField(field)
-
-		b.destCache[currentPath] = &origin{
-			name:   typeField.Name,
-			path:   currentPath,
-			refval: effectiveField,
-		}
-
-		// processing slices of structures <-- TODO
-		if field.Kind() == reflect.Slice {
-			elemType := field.Type().Elem()
-			isStructPtr := elemType.Kind() == reflect.Ptr && elemType.Elem().Kind() == reflect.Struct
-
-			if elemType.Kind() == reflect.Struct || isStructPtr {
-				sce := b.sourceCache[currentPath]
-
-				if sce == nil {
-					continue
-				}
-
-				for j := 0; j < sce.refval.Elem().Len(); j++ {
-					if j == 0 {
-						amount := sce.refval.Elem().Len()
-						field.Set(reflect.MakeSlice(reflect.SliceOf(elemType), amount, amount))
-					}
-
-					// working with pointers to structures in a slice
-					var elem reflect.Value
-					if isStructPtr {
-						elem = reflect.New(elemType.Elem())
-						field.Index(j).Set(elem)
-					} else {
-						elem = reflect.New(elemType).Elem()
-						field.Index(j).Set(elem)
-					}
-
-					b.buildDestCache(field.Index(j), fmt.Sprintf("%s.[%d]", currentPath, j))
-				}
-			}
-			continue
-		}
-
-		if effectiveField.Kind() != reflect.Struct {
-			continue
-		}
-
-		// recursively build cache for nested structures
-		b.buildDestCache(effectiveField, currentPath)
+		b.updateDestCache(currentPath, typeField.Name, effectiveField)
+		b.processField(effectiveField, currentPath)
 	}
 
 	return nil
+}
+
+func (b *Builder) processField(field reflect.Value, currentPath string) {
+	switch field.Kind() {
+	case reflect.Slice:
+		b.processSlice(field, currentPath)
+	case reflect.Struct:
+		b.buildDestCache(field, currentPath)
+	}
+}
+
+func (b *Builder) processSlice(field reflect.Value, currentPath string) {
+	elemType := field.Type().Elem()
+	isStructPtr := elemType.Kind() == reflect.Ptr && elemType.Elem().Kind() == reflect.Struct
+
+	if elemType.Kind() == reflect.Struct || isStructPtr {
+		sce := b.sourceCache[currentPath]
+
+		if sce == nil {
+			return
+		}
+
+		for j := 0; j < sce.refval.Elem().Len(); j++ {
+			if j == 0 {
+				amount := sce.refval.Elem().Len()
+				field.Set(reflect.MakeSlice(reflect.SliceOf(elemType), amount, amount))
+			}
+
+			// working with pointers to structures in a slice
+			var elem reflect.Value
+			if isStructPtr {
+				elem = reflect.New(elemType.Elem())
+				field.Index(j).Set(elem)
+			} else {
+				elem = reflect.New(elemType).Elem()
+				field.Index(j).Set(elem)
+			}
+
+			b.buildDestCache(field.Index(j), fmt.Sprintf("%s.[%d]", currentPath, j))
+		}
+	}
 }
 
 func (b *Builder) Handle(field *Field) {
@@ -324,6 +328,7 @@ func deRefPtr(v reflect.Value) reflect.Value {
 	if v.Kind() == reflect.Ptr {
 		return v.Elem()
 	}
+
 	return v
 }
 
@@ -336,7 +341,6 @@ func getFieldTag(field reflect.StructField, tag string) string {
 	return fieldTag
 }
 
-// getEffectiveField handling pointers to structures
 func getEffectiveField(field reflect.Value) reflect.Value {
 	if field.Kind() == reflect.Ptr && field.Type().Elem().Kind() == reflect.Struct {
 		if field.IsNil() {
