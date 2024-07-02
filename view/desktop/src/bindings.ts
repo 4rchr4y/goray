@@ -3,6 +3,14 @@
 /** user-defined commands **/
 
 export const commands = {
+  async createProject(input: CreateProjectInput): Promise<Result<Project | null, string>> {
+    try {
+      return { status: 'ok', data: await TAURI_INVOKE('create_project', { input }) }
+    } catch (e) {
+      if (e instanceof Error) throw e
+      else return { status: 'error', error: e as any }
+    }
+  },
   async appReady(): Promise<void> {
     await TAURI_INVOKE('app_ready')
   },
@@ -16,6 +24,9 @@ export const commands = {
 /** user-defined statics **/
 
 /** user-defined types **/
+
+export type CreateProjectInput = { source: string; repository: string | null }
+export type Project = { id: string; source: string; repository: string | null; created_at: string }
 
 /** tauri-specta globals **/
 
